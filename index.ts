@@ -31,11 +31,28 @@ class ComponentStorage<T extends Component> {
 
 class ECS {
   private nextEntityId: Entity = 0;
-
   private componentStores = new Map<ComponentType<any>, ComponentStorage<any>>();
+  private componentIndices = new Map<ComponentType<any>, number>();
+  private entityBitmasks = new Map<Entity, number>();
+  private nextComponentIndex = 0;
+
+  registerComponentType<T extends Component>(componentType: ComponentType<T>): void {
+    if (!this.componentIndices.has(componentType)) {
+      this.componentIndices.set(componentType, this.nextComponentIndex++);
+    }
+  }
+
+  private getComponentIndex<T extends Component>(componentType: ComponentType<T>): number {
+    const index = this.componentIndices.get(componentType);
+    if (index === undefined) {
+      throw new Error(`Component type ${componentType.name} is not registered.`);
+    }
+    return index;
+  }
 
   createEntity(...components: Component[]): Entity {
     const entity = this.nextEntityId++;
+    this.entityBitmasks.set(entity, 0);
     for (const component of components) {
       this.addComponent(entity, component);
     }
@@ -46,25 +63,35 @@ class ECS {
     for (const store of this.componentStores.values()) {
       store.remove(entity);
     }
+    this.entityBitmasks.delete(entity);
   }
 
   addComponent<T extends Component>(entity: Entity, component: T): void {
     const componentType = component.constructor as ComponentType<T>;
+    const index = this.getComponentIndex(componentType);
+
     if (!this.componentStores.has(componentType)) {
       this.componentStores.set(componentType, new ComponentStorage<T>());
     }
     const store = this.componentStores.get(componentType)!;
     store.add(entity, component);
+
+    const currentBitmask = this.entityBitmasks.get(entity) || 0;
+    this.entityBitmasks.set(entity, currentBitmask | (1 << index));
+  }
+
+  removeComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): void {
+    const index = this.getComponentIndex(componentType);
+    const store = this.componentStores.get(componentType);
+    store?.remove(entity);
+
+    const currentBitmask = this.entityBitmasks.get(entity) || 0;
+    this.entityBitmasks.set(entity, currentBitmask & ~(1 << index));
   }
 
   getComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): T | undefined {
     const store = this.componentStores.get(componentType);
     return store?.get(entity);
-  }
-
-  removeComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): void {
-    const store = this.componentStores.get(componentType);
-    store?.remove(entity);
   }
 
   hasComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): boolean {
@@ -73,23 +100,20 @@ class ECS {
   }
 
   queryEntities(componentTypes: ComponentType<Component>[]): Entity[] {
-    const sets = componentTypes.map((type) => {
-      const store = this.componentStores.get(type);
-      return store ? new Set(store.keys()) : new Set<Entity>();
-    });
+    const queryBitmask = componentTypes.reduce((bitmask, type) => {
+      const index = this.getComponentIndex(type);
+      return bitmask | (1 << index);
+    }, 0);
 
-    if (sets.length === 0) return [];
-
-    return Array.from(sets.reduce((acc, next) => {
-      const intersection = new Set<Entity>();
-      for (const x of acc) {
-        if (next.has(x)) intersection.add(x);
+    const result: Entity[] = [];
+    for (const [entity, bitmask] of this.entityBitmasks.entries()) {
+      if ((bitmask & queryBitmask) === queryBitmask) {
+        result.push(entity);
       }
-      return intersection;
-    }));
+    }
+    return result;
   }
 }
-
 
 class Position implements Component {
   constructor(public x: number, public y: number) {}
@@ -99,24 +123,29 @@ class Velocity implements Component {
   constructor(public dx: number, public dy: number) {}
 }
 
-const ecs = new ECS();
+class Health implements Component {
+  constructor(public value: number) {}
+}
 
+const ecs = new ECS();
+ecs.registerComponentType(Health);
+ecs.registerComponentType(Position);
+ecs.registerComponentType(Velocity);
 
 const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1));
-const entity2 = ecs.createEntity(new Position(10, 10));
+const entity2 = ecs.createEntity(new Position(10, 10), new Health(100));
+const entity3 = ecs.createEntity(new Position(10, 10), new Health(100));
 
 const entitiesWithPosition = ecs.queryEntities([Position]);
 console.log(entitiesWithPosition); // [entity1, entity2]
 
-const entitiesWithPositionAndVelocity = ecs.queryEntities([Position, Velocity]);
+const entitiesWithPositionAndVelocity = ecs.queryEntities([Position, Health]);
 console.log(entitiesWithPositionAndVelocity); // [entity1]
 
-for (const entity of entitiesWithPositionAndVelocity) {
+for (const entity of ecs.queryEntities([Position, Health])) {
   const position = ecs.getComponent(entity, Position);
-  const velocity = ecs.getComponent(entity, Velocity);
-  if (position && velocity) {
-    position.x += velocity.dx;
-    position.y += velocity.dy;
-    console.log(`Entity ${entity} moved to (${position.x}, ${position.y})`);
+  const health = ecs.getComponent(entity, Health);
+  if (position && health) {
+    console.log(`Entity ${entity} has position (${position.x}, ${position.y}) and health ${health.value}`);
   }
 }
