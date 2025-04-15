@@ -34,8 +34,12 @@ class ECS {
 
   private componentStores = new Map<ComponentType<any>, ComponentStorage<any>>();
 
-  createEntity(): Entity {
-    return this.nextEntityId++;
+  createEntity(...components: Component[]): Entity {
+    const entity = this.nextEntityId++;
+    for (const component of components) {
+      this.addComponent(entity, component);
+    }
+    return entity;
   }
 
   deleteEntity(entity: Entity): void {
@@ -98,13 +102,8 @@ class Velocity implements Component {
 const ecs = new ECS();
 
 
-const entity1 = ecs.createEntity();
-const entity2 = ecs.createEntity();
-
-ecs.addComponent(entity1, new Position(0, 0));
-ecs.addComponent(entity1, new Velocity(1, 1));
-ecs.addComponent(entity2, new Position(10, 10));
-
+const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1));
+const entity2 = ecs.createEntity(new Position(10, 10));
 
 const entitiesWithPosition = ecs.queryEntities([Position]);
 console.log(entitiesWithPosition); // [entity1, entity2]
