@@ -110,7 +110,12 @@ class ECS<RegisteredComponents extends Component> {
   queryEntities<T extends ComponentType<RegisteredComponents>[]>(
     ...componentTypes: T
   ): ReadonlyArray<
-    [Entity, { [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never }]
+    [
+      Entity,
+      {
+        [K in keyof T]: T[K] extends ComponentType<infer U> ? U : never;
+      }
+    ]
   > {
     const queryBitmask = componentTypes.reduce((bitmask, type) => {
       const index = this.getComponentIndex(type);
@@ -118,18 +123,23 @@ class ECS<RegisteredComponents extends Component> {
     }, 0n);
 
     const result: Array<
-      [Entity, { [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never }]
+      [
+        Entity,
+        {
+          [K in keyof T as PascalCaseToCamelCase<T[K]['name']>]: T[K] extends ComponentType<infer U> ? U : never;
+        }
+      ]
     > = [];
     for (const [entity, bitmask] of this.entityBitmasks.entries()) {
       if ((bitmask & queryBitmask) === queryBitmask) {
         const entityComponents = {} as {
-          [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never;
+          [K in keyof T as PascalCaseToCamelCase<T[K]['name']>]: T[K] extends ComponentType<infer U> ? U : never;
         };
         for (const componentType of componentTypes) {
           const component = this.getComponent(entity, componentType as ComponentType<RegisteredComponents>);
           if (component) {
-            const name = pascalCaseToCamelCase(componentType.name)
-            entityComponents[name as any] = component as any;
+            const name = pascalCaseToCamelCase(componentType.name);
+            entityComponents[name as keyof typeof entityComponents] = component as any;
           }
         }
         result.push([entity, entityComponents]);
@@ -172,6 +182,9 @@ const ecs = ECS.create([Position, Velocity, Health]);
 // Create entities
 const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1));
 const entity2 = ecs.createEntity(new Position(10, 10), new Health(100));
+const entity3 = ecs.createEntity(new Position(20, 20), new Velocity(2, 2));
+const entity4 = ecs.createEntity(new Position(30, 30), new Health(80), new Velocity(3, 3));
+const entity5 = ecs.createEntity(new Position(40, 40), new Health(60));
 
 // Query entities
 const entitiesWithPositionAndHealth = ecs.queryEntities(Position, Health);
