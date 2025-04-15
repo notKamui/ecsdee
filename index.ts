@@ -24,7 +24,7 @@ class ComponentStorage<T extends Component> {
     return this.components.has(entity);
   }
 
-  keys(): MapIterator<number> {
+  keys(): IterableIterator<Entity> {
     return this.components.keys();
   }
 }
@@ -32,9 +32,9 @@ class ComponentStorage<T extends Component> {
 class ECS {
   private nextEntityId: Entity = 0;
   private componentStores = new Map<ComponentType<any>, ComponentStorage<any>>();
-  private componentIndices = new Map<ComponentType<any>, number>();
-  private entityBitmasks = new Map<Entity, number>();
-  private nextComponentIndex = 0;
+  private componentIndices = new Map<ComponentType<any>, bigint>();
+  private entityBitmasks = new Map<Entity, bigint>();
+  private nextComponentIndex = 0n;
 
   registerComponentType<T extends Component>(componentType: ComponentType<T>): void {
     if (!this.componentIndices.has(componentType)) {
@@ -42,7 +42,7 @@ class ECS {
     }
   }
 
-  private getComponentIndex<T extends Component>(componentType: ComponentType<T>): number {
+  private getComponentIndex<T extends Component>(componentType: ComponentType<T>): bigint {
     const index = this.componentIndices.get(componentType);
     if (index === undefined) {
       throw new Error(`Component type ${componentType.name} is not registered.`);
@@ -52,7 +52,7 @@ class ECS {
 
   createEntity(...components: Component[]): Entity {
     const entity = this.nextEntityId++;
-    this.entityBitmasks.set(entity, 0);
+    this.entityBitmasks.set(entity, 0n);
     for (const component of components) {
       this.addComponent(entity, component);
     }
@@ -76,8 +76,9 @@ class ECS {
     const store = this.componentStores.get(componentType)!;
     store.add(entity, component);
 
-    const currentBitmask = this.entityBitmasks.get(entity) || 0;
-    this.entityBitmasks.set(entity, currentBitmask | (1 << index));
+    // Update the entity's bitmask
+    const currentBitmask = this.entityBitmasks.get(entity) || 0n;
+    this.entityBitmasks.set(entity, currentBitmask | (1n << index));
   }
 
   removeComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): void {
@@ -85,8 +86,9 @@ class ECS {
     const store = this.componentStores.get(componentType);
     store?.remove(entity);
 
-    const currentBitmask = this.entityBitmasks.get(entity) || 0;
-    this.entityBitmasks.set(entity, currentBitmask & ~(1 << index));
+    // Update the entity's bitmask
+    const currentBitmask = this.entityBitmasks.get(entity) || 0n;
+    this.entityBitmasks.set(entity, currentBitmask & ~(1n << index));
   }
 
   getComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): T | undefined {
@@ -102,8 +104,8 @@ class ECS {
   queryEntities(componentTypes: ComponentType<Component>[]): Entity[] {
     const queryBitmask = componentTypes.reduce((bitmask, type) => {
       const index = this.getComponentIndex(type);
-      return bitmask | (1 << index);
-    }, 0);
+      return bitmask | (1n << index);
+    }, 0n);
 
     const result: Entity[] = [];
     for (const [entity, bitmask] of this.entityBitmasks.entries()) {
@@ -139,7 +141,7 @@ const entity3 = ecs.createEntity(new Position(10, 10), new Health(100));
 const entitiesWithPosition = ecs.queryEntities([Position]);
 console.log(entitiesWithPosition); // [entity1, entity2]
 
-const entitiesWithPositionAndVelocity = ecs.queryEntities([Position, Health]);
+const entitiesWithPositionAndVelocity = ecs.queryEntities([Position, Velocity]);
 console.log(entitiesWithPositionAndVelocity); // [entity1]
 
 for (const entity of ecs.queryEntities([Position, Health])) {
