@@ -3,7 +3,7 @@ type Entity = number;
 // biome-ignore lint/suspicious/noEmptyInterface: Marker interface for components
 interface Component {}
 
-type ComponentType<T extends Component> = new (...args: any[]) => T;
+type ComponentType<T extends Component> = new (...args: never[]) => T;
 
 class ComponentStorage<T extends Component> {
   private components = new Map<Entity, T>();
@@ -31,8 +31,8 @@ class ComponentStorage<T extends Component> {
 
 class ECS {
   private nextEntityId: Entity = 0;
-  private componentStores = new Map<ComponentType<any>, ComponentStorage<any>>();
-  private componentIndices = new Map<ComponentType<any>, bigint>();
+  private componentStores = new Map<ComponentType<Component>, ComponentStorage<Component>>();
+  private componentIndices = new Map<ComponentType<Component>, bigint>();
   private entityBitmasks = new Map<Entity, bigint>();
   private nextComponentIndex = 0n;
 
@@ -76,7 +76,6 @@ class ECS {
     const store = this.componentStores.get(componentType)!;
     store.add(entity, component);
 
-    // Update the entity's bitmask
     const currentBitmask = this.entityBitmasks.get(entity) || 0n;
     this.entityBitmasks.set(entity, currentBitmask | (1n << index));
   }
@@ -86,14 +85,13 @@ class ECS {
     const store = this.componentStores.get(componentType);
     store?.remove(entity);
 
-    // Update the entity's bitmask
     const currentBitmask = this.entityBitmasks.get(entity) || 0n;
     this.entityBitmasks.set(entity, currentBitmask & ~(1n << index));
   }
 
   getComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): T | undefined {
     const store = this.componentStores.get(componentType);
-    return store?.get(entity);
+    return store?.get(entity) as T | undefined;
   }
 
   hasComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): boolean {
