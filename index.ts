@@ -1,4 +1,14 @@
-type Entity = number;
+type PascalCaseToCamelCase<S> = S extends `${infer T}${infer U}`
+  ? `${Lowercase<T>}${U}`
+  : S;
+
+function pascalCaseToCamelCase<S extends string>(str: S): PascalCaseToCamelCase<S> {
+  const firstChar = str.charAt(0).toLowerCase();
+  const rest = str.slice(1);
+  return `${firstChar}${rest}` as PascalCaseToCamelCase<S>;
+}
+
+type Entity = bigint;
 
 // biome-ignore lint/suspicious/noEmptyInterface: Marker interface for components
 interface Component {}
@@ -30,7 +40,7 @@ class ComponentStorage<T extends Component> {
 }
 
 class ECS<RegisteredComponents extends Component> {
-  private nextEntityId: Entity = 0;
+  private nextEntityId: Entity = 0n;
   private componentStores = new Map<ComponentType<RegisteredComponents>, ComponentStorage<RegisteredComponents>>();
   private componentIndices = new Map<ComponentType<RegisteredComponents>, bigint>();
   private entityBitmasks = new Map<Entity, bigint>();
@@ -97,16 +107,32 @@ class ECS<RegisteredComponents extends Component> {
     return store?.has(entity) || false;
   }
 
-  queryEntities(componentTypes: ComponentType<RegisteredComponents>[]): Entity[] {
+  queryEntities<T extends ComponentType<RegisteredComponents>[]>(
+    ...componentTypes: T
+  ): ReadonlyArray<
+    [Entity, { [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never }]
+  > {
     const queryBitmask = componentTypes.reduce((bitmask, type) => {
       const index = this.getComponentIndex(type);
       return bitmask | (1n << index);
     }, 0n);
 
-    const result: Entity[] = [];
+    const result: Array<
+      [Entity, { [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never }]
+    > = [];
     for (const [entity, bitmask] of this.entityBitmasks.entries()) {
       if ((bitmask & queryBitmask) === queryBitmask) {
-        result.push(entity);
+        const entityComponents = {} as {
+          [K in keyof T as PascalCaseToCamelCase<K>]: T[K] extends ComponentType<infer U> ? U : never;
+        };
+        for (const componentType of componentTypes) {
+          const component = this.getComponent(entity, componentType as ComponentType<RegisteredComponents>);
+          if (component) {
+            const name = pascalCaseToCamelCase(componentType.name)
+            entityComponents[name as any] = component as any;
+          }
+        }
+        result.push([entity, entityComponents]);
       }
     }
     return result;
@@ -148,16 +174,9 @@ const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1));
 const entity2 = ecs.createEntity(new Position(10, 10), new Health(100));
 
 // Query entities
-const entitiesWithPosition = ecs.queryEntities([Position]);
-console.log(entitiesWithPosition); // [entity1, entity2]
+const entitiesWithPositionAndHealth = ecs.queryEntities(Position, Health);
+console.table(entitiesWithPositionAndHealth);
 
-const entitiesWithPositionAndVelocity = ecs.queryEntities([Position, Velocity]);
-console.log(entitiesWithPositionAndVelocity); // [entity1]
-
-for (const entity of ecs.queryEntities([Position, Health])) {
-  const position = ecs.getComponent(entity, Position);
-  const health = ecs.getComponent(entity, Health);
-  if (position && health) {
-    console.log(`Entity ${entity} has position (${position.x}, ${position.y}) and health ${health.value}`);
-  }
-}
+// for (const [id, { position, health }] of entitiesWithPositionAndHealth) {
+//   console.log(`Entity ${id} has Position(${position.x}, ${position.y}) and Health(${health.value})`);
+// }
