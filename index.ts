@@ -86,9 +86,7 @@ class ECS {
   }
 }
 
-// Example usage:
 
-// Define components
 class Position implements Component {
   constructor(public x: number, public y: number) {}
 }
@@ -97,19 +95,17 @@ class Velocity implements Component {
   constructor(public dx: number, public dy: number) {}
 }
 
-// Create ECS instance
 const ecs = new ECS();
 
-// Create entities
+
 const entity1 = ecs.createEntity();
 const entity2 = ecs.createEntity();
 
-// Add components to entities
 ecs.addComponent(entity1, new Position(0, 0));
 ecs.addComponent(entity1, new Velocity(1, 1));
 ecs.addComponent(entity2, new Position(10, 10));
 
-// Query entities with specific components
+
 const entitiesWithPosition = ecs.queryEntities([Position]);
 console.log(entitiesWithPosition); // [entity1, entity2]
 
