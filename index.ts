@@ -1,195 +1,179 @@
-type PascalCaseToCamelCase<S> = S extends `${infer T}${infer U}`
-  ? `${Lowercase<T>}${U}`
-  : S;
+type Prettify<T> = { [K in keyof T]: T[K] } & unknown
+
+type PascalCaseToCamelCase<S> = S extends `${infer T}${infer U}` ? `${Lowercase<T>}${U}` : S
 
 function pascalCaseToCamelCase<S extends string>(str: S): PascalCaseToCamelCase<S> {
-  const firstChar = str.charAt(0).toLowerCase();
-  const rest = str.slice(1);
-  return `${firstChar}${rest}` as PascalCaseToCamelCase<S>;
+  const firstChar = str.charAt(0).toLowerCase()
+  const rest = str.slice(1)
+  return `${firstChar}${rest}` as PascalCaseToCamelCase<S>
 }
 
-type Entity = bigint;
+type Entity = bigint & {}
 
 // biome-ignore lint/suspicious/noEmptyInterface: Marker interface for components
 interface Component {}
 
-type ComponentType<T extends Component> = abstract new (...args: any[]) => T;
+type ComponentType<T extends Component, N extends string = string> = (abstract new (
+  ...args: never[]
+) => T) & { readonly _name: N }
 
-class ComponentStorage<T extends Component> {
-  private components = new Map<Entity, T>();
+type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never
 
-  add(entity: Entity, component: T): void {
-    this.components.set(entity, component);
-  }
+type ComputeQuery<T extends readonly ComponentType<any, any>[]> = UnionToIntersection<
+  {
+    [I in keyof T]: T[I] extends ComponentType<any, infer N>
+      ? {
+          [P in PascalCaseToCamelCase<N>]: T[I] extends ComponentType<infer U, any> ? U : never
+        }
+      : never
+  }[number]
+>
 
-  get(entity: Entity): T | undefined {
-    return this.components.get(entity);
-  }
-
-  remove(entity: Entity): void {
-    this.components.delete(entity);
-  }
-
-  has(entity: Entity): boolean {
-    return this.components.has(entity);
-  }
-
-  keys(): IterableIterator<Entity> {
-    return this.components.keys();
-  }
-}
+type EntityQueryResult<T extends ComponentType<any, any>[]> = Prettify<readonly [Entity, Prettify<ComputeQuery<T>>][]>
 
 class ECS<RegisteredComponents extends Component> {
-  private nextEntityId: Entity = 0n;
-  private componentStores = new Map<ComponentType<RegisteredComponents>, ComponentStorage<RegisteredComponents>>();
-  private componentIndices = new Map<ComponentType<RegisteredComponents>, bigint>();
-  private entityBitmasks = new Map<Entity, bigint>();
-  private nextComponentIndex = 0n;
+  private nextEntityId: Entity = 0n
+  private componentStores = new Map<ComponentType<RegisteredComponents>, Map<Entity, RegisteredComponents>>()
+  private componentIndices = new Map<ComponentType<RegisteredComponents>, bigint>()
+  private entityBitmasks = new Map<Entity, bigint>()
+  private nextComponentIndex = 0n
 
   private constructor() {}
 
   static create<Components extends Component[]>(
-    allowedComponents: [...{ [K in keyof Components]: ComponentType<Components[K]> }]
+    allowedComponents: [...{ [K in keyof Components]: ComponentType<Components[K]> }],
   ): ECS<Components[number]> {
-    const ecs = new ECS<Components[number]>();
+    const ecs = new ECS<Components[number]>()
     for (const componentType of allowedComponents) {
-      ecs.registerComponentType(componentType);
+      ecs.registerComponentType(componentType)
     }
-    return ecs;
+    return ecs
   }
 
   createEntity(...components: RegisteredComponents[]): Entity {
-    const entity = this.nextEntityId++;
-    this.entityBitmasks.set(entity, 0n);
+    const entity = this.nextEntityId++
+    this.entityBitmasks.set(entity, 0n)
     for (const component of components) {
-      this.addComponent(entity, component);
+      this.addComponent(entity, component)
     }
-    return entity;
+    return entity
   }
 
   deleteEntity(entity: Entity): void {
     for (const store of this.componentStores.values()) {
-      store.remove(entity);
+      store.delete(entity)
     }
-    this.entityBitmasks.delete(entity);
+    this.entityBitmasks.delete(entity)
   }
 
   addComponent<T extends RegisteredComponents>(entity: Entity, component: T): void {
-    const componentType = component.constructor as ComponentType<T>;
-    const index = this.getComponentIndex(componentType);
+    const componentType = component.constructor as ComponentType<T>
+    const index = this.getComponentIndex(componentType)
 
     if (!this.componentStores.has(componentType)) {
-      this.componentStores.set(componentType, new ComponentStorage<T>());
+      this.componentStores.set(componentType, new Map<Entity, T>())
     }
-    const store = this.componentStores.get(componentType)!;
-    store.add(entity, component);
+    const store = this.componentStores.get(componentType)!
+    store.set(entity, component)
 
-    const currentBitmask = this.entityBitmasks.get(entity) || 0n;
-    this.entityBitmasks.set(entity, currentBitmask | (1n << index));
+    const currentBitmask = this.entityBitmasks.get(entity) || 0n
+    this.entityBitmasks.set(entity, currentBitmask | (1n << index))
   }
 
   removeComponent<T extends RegisteredComponents>(entity: Entity, componentType: ComponentType<T>): void {
-    const index = this.getComponentIndex(componentType);
-    const store = this.componentStores.get(componentType);
-    store?.remove(entity);
+    const index = this.getComponentIndex(componentType)
+    const store = this.componentStores.get(componentType)
+    store?.delete(entity)
 
-    const currentBitmask = this.entityBitmasks.get(entity) || 0n;
-    this.entityBitmasks.set(entity, currentBitmask & ~(1n << index));
+    const currentBitmask = this.entityBitmasks.get(entity) || 0n
+    this.entityBitmasks.set(entity, currentBitmask & ~(1n << index))
   }
 
   getComponent<T extends RegisteredComponents>(entity: Entity, componentType: ComponentType<T>): T | undefined {
-    const store = this.componentStores.get(componentType);
-    return store?.get(entity) as T | undefined;
+    const store = this.componentStores.get(componentType)
+    return store?.get(entity) as T | undefined
   }
 
   hasComponent<T extends RegisteredComponents>(entity: Entity, componentType: ComponentType<T>): boolean {
-    const store = this.componentStores.get(componentType);
-    return store?.has(entity) || false;
+    const store = this.componentStores.get(componentType)
+    return store?.has(entity) || false
   }
 
-  queryEntities<T extends ComponentType<RegisteredComponents>[]>(
-    ...componentTypes: T
-  ): ReadonlyArray<
-    [
-      Entity,
-      {
-        [K in keyof T]: T[K] extends ComponentType<infer U> ? U : never;
-      }
-    ]
-  > {
+  queryEntities<T extends ComponentType<RegisteredComponents>[]>(...componentTypes: T): EntityQueryResult<T> {
     const queryBitmask = componentTypes.reduce((bitmask, type) => {
-      const index = this.getComponentIndex(type);
-      return bitmask | (1n << index);
-    }, 0n);
+      const index = this.getComponentIndex(type)
+      return bitmask | (1n << index)
+    }, 0n)
 
-    const result: Array<
-      [
-        Entity,
-        {
-          [K in keyof T as PascalCaseToCamelCase<T[K]['name']>]: T[K] extends ComponentType<infer U> ? U : never;
-        }
-      ]
-    > = [];
+    const result: [Entity, ComputeQuery<T>][] = []
     for (const [entity, bitmask] of this.entityBitmasks.entries()) {
-      if ((bitmask & queryBitmask) === queryBitmask) {
-        const entityComponents = {} as {
-          [K in keyof T as PascalCaseToCamelCase<T[K]['name']>]: T[K] extends ComponentType<infer U> ? U : never;
-        };
-        for (const componentType of componentTypes) {
-          const component = this.getComponent(entity, componentType as ComponentType<RegisteredComponents>);
-          if (component) {
-            const name = pascalCaseToCamelCase(componentType.name);
-            entityComponents[name as keyof typeof entityComponents] = component as any;
-          }
-        }
-        result.push([entity, entityComponents]);
+      if ((bitmask & queryBitmask) !== queryBitmask) continue
+      const entityComponents = {} as ComputeQuery<T>
+      for (const componentType of componentTypes) {
+        const component = this.getComponent(entity, componentType as ComponentType<RegisteredComponents>)
+        if (!component) continue
+        const name = pascalCaseToCamelCase(componentType.name) as keyof ComputeQuery<T>
+        entityComponents[name] = component as any
       }
+      result.push([entity, entityComponents])
     }
-    return result;
+    return result as EntityQueryResult<T>
   }
 
-  private registerComponentType<T extends RegisteredComponents>(componentType: ComponentType<T>): ECS<RegisteredComponents> {
+  private registerComponentType<T extends RegisteredComponents>(
+    componentType: ComponentType<T>,
+  ): ECS<RegisteredComponents> {
     if (!this.componentIndices.has(componentType)) {
-      this.componentIndices.set(componentType, this.nextComponentIndex++);
+      this.componentIndices.set(componentType, this.nextComponentIndex++)
     }
-    return this;
+    return this
   }
 
   private getComponentIndex<T extends RegisteredComponents>(componentType: ComponentType<T>): bigint {
-    const index = this.componentIndices.get(componentType);
+    const index = this.componentIndices.get(componentType)
     if (index === undefined) {
-      throw new Error(`Component type ${componentType.name} is not registered.`);
+      throw new Error(`Component type ${componentType.name} is not registered.`)
     }
-    return index;
+    return index
   }
 }
 
 class Position implements Component {
-  constructor(public x: number, public y: number) {}
+  static readonly _name = 'Position'
+  constructor(
+    public x: number,
+    public y: number,
+  ) {}
 }
 
 class Velocity implements Component {
-  constructor(public dx: number, public dy: number) {}
+  static readonly _name = 'Velocity'
+  constructor(
+    public dx: number,
+    public dy: number,
+  ) {}
 }
 
 class Health implements Component {
+  static readonly _name = 'Health'
   constructor(public value: number) {}
 }
 
 // Create ECS using the factory
-const ecs = ECS.create([Position, Velocity, Health]);
+const ecs = ECS.create([Position, Velocity, Health])
 
 // Create entities
-const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1));
-const entity2 = ecs.createEntity(new Position(10, 10), new Health(100));
-const entity3 = ecs.createEntity(new Position(20, 20), new Velocity(2, 2));
-const entity4 = ecs.createEntity(new Position(30, 30), new Health(80), new Velocity(3, 3));
-const entity5 = ecs.createEntity(new Position(40, 40), new Health(60));
+const entity1 = ecs.createEntity(new Position(0, 0), new Velocity(1, 1))
+const entity2 = ecs.createEntity(new Position(10, 10), new Health(100))
+const entity3 = ecs.createEntity(new Position(20, 20), new Velocity(2, 2))
+const entity4 = ecs.createEntity(new Position(30, 30), new Health(80), new Velocity(3, 3))
+const entity5 = ecs.createEntity(new Position(40, 40), new Health(60))
 
 // Query entities
-const entitiesWithPositionAndHealth = ecs.queryEntities(Position, Health);
-console.table(entitiesWithPositionAndHealth);
+const entitiesWithPositionAndHealth = ecs.queryEntities(Position, Health)
+console.table(entitiesWithPositionAndHealth)
 
-// for (const [id, { position, health }] of entitiesWithPositionAndHealth) {
-//   console.log(`Entity ${id} has Position(${position.x}, ${position.y}) and Health(${health.value})`);
-// }
+for (const [id, components] of entitiesWithPositionAndHealth) {
+  const { position, health } = components
+  console.log(`Entity ${id} has Position(${position.x}, ${position.y}) and Health(${health.value})`)
+}

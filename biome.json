@@ -7,15 +7,13 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "ignore": [
-      "node_modules",
-      "bun.lock"
-    ]
+    "ignore": ["node_modules", "bun.lock"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
-    "indentWidth": 2
+    "indentWidth": 2,
+    "lineWidth": 120
   },
   "organizeImports": {
     "enabled": true

@@ -8,6 +8,7 @@
     "quickfix.biome": "explicit",
     "source.organizeImports.biome": "explicit"
   },
+  "editor.formatOnSave": true,
   "tailwindCSS.emmetCompletions": true,
   "tailwindCSS.classAttributes": [
     "classnames",
