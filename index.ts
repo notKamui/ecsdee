@@ -1,3 +1,5 @@
+const COMPONENT_SYMBOL = Symbol('component')
+
 type Prettify<T> = { [K in keyof T]: T[K] } & unknown
 
 type PascalCaseToCamelCase<S> = S extends `${infer T}${infer U}` ? `${Lowercase<T>}${U}` : S
@@ -15,7 +17,7 @@ interface Component {}
 
 type ComponentType<T extends Component, N extends string = string> = (abstract new (
   ...args: never[]
-) => T) & { readonly _name: N }
+) => T) & { readonly [COMPONENT_SYMBOL]: N }
 
 type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never
 
@@ -132,14 +134,14 @@ class ECS<RegisteredComponents extends Component> {
   private getComponentIndex<T extends RegisteredComponents>(componentType: ComponentType<T>): bigint {
     const index = this.componentIndices.get(componentType)
     if (index === undefined) {
-      throw new Error(`Component type ${componentType.name} is not registered.`)
+      throw new Error(`Component type ${String(componentType[COMPONENT_SYMBOL])} is not registered.`)
     }
     return index
   }
 }
 
 class Position implements Component {
-  static readonly _name = 'Position'
+  static readonly [COMPONENT_SYMBOL] = 'Position'
   constructor(
     public x: number,
     public y: number,
@@ -147,7 +149,7 @@ class Position implements Component {
 }
 
 class Velocity implements Component {
-  static readonly _name = 'Velocity'
+  static readonly [COMPONENT_SYMBOL] = 'Velocity'
   constructor(
     public dx: number,
     public dy: number,
@@ -155,7 +157,7 @@ class Velocity implements Component {
 }
 
 class Health implements Component {
-  static readonly _name = 'Health'
+  static readonly [COMPONENT_SYMBOL] = 'Health'
   constructor(public value: number) {}
 }
 
