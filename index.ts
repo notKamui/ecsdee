@@ -41,7 +41,7 @@ class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]> {
   private allowedComponents = new Map<string, ComponentDefinition<any, any>>()
 
   static create<ComponentDefs extends readonly ComponentDefinition<any, any>[]>(
-    allowedComponents: [...ComponentDefs],
+    ...allowedComponents: ComponentDefs
   ): ECS<ComponentDefs> {
     const ecs = new ECS<ComponentDefs>()
     for (const componentDef of allowedComponents) {
@@ -152,7 +152,7 @@ const Velocity = defineComponent<{ dx: number; dy: number }>()('Velocity')
 
 const Health = defineComponent<{ value: number }>()('Health')
 
-const ecs = ECS.create([Position, Velocity, Health])
+const ecs = ECS.create(Position, Velocity, Health)
 
 ecs.createEntity(Position.create({ x: 10, y: 20 }), Velocity.create({ dx: 1, dy: 2 }), Health.create({ value: 100 }))
 ecs.createEntity(Position.create({ x: 30, y: 40 }), Velocity.create({ dx: 3, dy: 4 }), Health.create({ value: 200 }))
