@@ -1,23 +1,15 @@
+import { type PascalCaseToCamelCase, type Prettify, type UnionToIntersection, pascalCaseToCamelCase } from './utils'
+
 const COMPONENT_TOKEN = Symbol('component')
 
-type Prettify<T> = { [K in keyof T]: T[K] } & unknown
-
-type PascalCaseToCamelCase<S> = S extends `${infer T}${infer U}` ? `${Lowercase<T>}${U}` : S
-
-function pascalCaseToCamelCase<S extends string>(str: S): PascalCaseToCamelCase<S> {
-  const firstChar = str.charAt(0).toLowerCase()
-  const rest = str.slice(1)
-  return `${firstChar}${rest}` as PascalCaseToCamelCase<S>
-}
-
-type EntityId = bigint & {}
+export type EntityId = bigint & {}
 
 export interface ComponentDefinition<T, N extends string = string> {
   readonly type: N
   create: (data: T) => T & { readonly [COMPONENT_TOKEN]: N }
 }
 
-type ComponentInstance<C extends ComponentDefinition<any, any>> = ReturnType<C['create']>
+export type ComponentInstance<C extends ComponentDefinition<any, any>> = ReturnType<C['create']>
 
 type ComputeQuery<T extends readonly ComponentDefinition<any, any>[]> = UnionToIntersection<
   {
@@ -25,9 +17,7 @@ type ComputeQuery<T extends readonly ComponentDefinition<any, any>[]> = UnionToI
   }[number]
 >
 
-type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never
-
-type EntityQueryResult<T extends readonly ComponentDefinition<any, any>[]> = Prettify<
+export type EntityQueryResult<T extends readonly ComponentDefinition<any, any>[]> = Prettify<
   readonly [EntityId, Prettify<ComputeQuery<T>>][]
 >
 
