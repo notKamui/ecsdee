@@ -67,7 +67,7 @@ export class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]>
   }
 
   addComponent(entity: EntityId, component: ComponentInstance<ComponentDefs[number]>): void {
-    const tag = component[COMPONENT_TOKEN]
+    const tag = component[COMPONENT_TOKEN] as string
     const index = this.getComponentIndex(tag)
 
     if (!this.componentStores.has(tag)) {
@@ -80,28 +80,28 @@ export class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]>
     this.entityBitmasks.set(entity, currentBitmask | (1n << index))
   }
 
-  removeComponent(tag: string, entity: EntityId): void {
-    const index = this.getComponentIndex(tag)
-    const store = this.componentStores.get(tag)
+  removeComponent(entity: EntityId, component: ComponentDefs[number]): void {
+    const index = this.getComponentIndex(component.type)
+    const store = this.componentStores.get(component.type)
     store?.delete(entity)
 
     const currentBitmask = this.entityBitmasks.get(entity) || 0n
     this.entityBitmasks.set(entity, currentBitmask & ~(1n << index))
   }
 
-  getComponent<T extends ComponentInstance<ComponentDefs[number]>>(entity: EntityId, tag: string): T | undefined {
-    const store = this.componentStores.get(tag)
-    return store?.get(entity) as T | undefined
+  getComponent<T extends ComponentDefs[number]>(entity: EntityId, component: T): ComponentInstance<T> | undefined {
+    const store = this.componentStores.get(component.type)
+    return store?.get(entity) as ComponentInstance<T> | undefined
   }
 
-  hasComponent(tag: string, entity: EntityId): boolean {
-    const store = this.componentStores.get(tag)
+  hasComponent(entity: EntityId, component: ComponentDefs[number]): boolean {
+    const store = this.componentStores.get(component.type)
     return store?.has(entity) || false
   }
 
-  queryEntities<T extends readonly ComponentDefinition<any, any>[]>(...componentDefs: T): EntityQueryResult<T> {
+  queryEntities<T extends readonly ComponentDefs[number][]>(...componentDefs: T): EntityQueryResult<T> {
     const queryBitmask = componentDefs.reduce((bitmask, def) => {
-      const index = this.getComponentIndex(def.type)
+      const index = this.getComponentIndex(def)
       return bitmask | (1n << index)
     }, 0n)
 
@@ -110,7 +110,7 @@ export class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]>
       if ((bitmask & queryBitmask) !== queryBitmask) continue
       const entityComponents = {} as ComputeQuery<T>
       for (const def of componentDefs) {
-        const component = this.getComponent(entity, def.type)
+        const component = this.getComponent(entity, def)
         if (!component) continue
         const key = pascalCaseToCamelCase(def.type) as keyof ComputeQuery<T>
         entityComponents[key] = component
@@ -120,18 +120,17 @@ export class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]>
     return result as EntityQueryResult<T>
   }
 
-  private registerComponentType<T extends ComponentDefinition<any, any>>(componentDef: T): void {
+  private registerComponentType<T extends ComponentDefs[number]>(componentDef: T): void {
     if (!this.componentIndices.has(componentDef.type)) {
       this.componentIndices.set(componentDef.type, this.nextComponentIndex++)
       this.allowedComponents.set(componentDef.type, componentDef)
     }
   }
 
-  private getComponentIndex(tag: string): bigint {
-    const index = this.componentIndices.get(tag)
-    if (index === undefined) {
-      throw new Error(`Component type ${tag} is not registered.`)
-    }
+  private getComponentIndex(component: ComponentDefs[number] | string): bigint {
+    const type = typeof component === 'string' ? component : component.type
+    const index = this.componentIndices.get(type)
+    if (index === undefined) throw new Error(`Component type ${type} is not registered.`)
     return index
   }
 }
