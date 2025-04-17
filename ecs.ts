@@ -4,161 +4,135 @@ const COMPONENT_TOKEN = Symbol('component')
 
 export type EntityId = bigint & {}
 
-export interface ComponentDefinition<T, N extends string = string> {
+export interface ComponentDefinition<T = any, N extends string = string> {
   readonly type: N
   create: (data: T) => T & { readonly [COMPONENT_TOKEN]: N }
 }
 
-export type ComponentInstance<C extends ComponentDefinition<any, any>> = ReturnType<C['create']>
+export type ComponentInstance<C extends ComponentDefinition> = ReturnType<C['create']>
 
-type ComputeQuery<T extends readonly ComponentDefinition<any, any>[]> = UnionToIntersection<
+type ComputeQuery<T extends readonly ComponentDefinition[]> = UnionToIntersection<
   {
     [I in keyof T]: T[I] extends ComponentDefinition<infer U, infer N> ? { [P in PascalCaseToCamelCase<N>]: U } : never
   }[number]
 >
 
-export type EntityQueryResult<T extends readonly ComponentDefinition<any, any>[]> = Prettify<
-  readonly [EntityId, Prettify<ComputeQuery<T>>][]
+type OptionalComputeQuery<T extends readonly ComponentDefinition[]> = UnionToIntersection<
+  {
+    [I in keyof T]: T[I] extends ComponentDefinition<infer U, infer N> ? { [P in PascalCaseToCamelCase<N>]?: U } : never
+  }[number]
 >
 
-type CompDef = ComponentDefinition<any, any>
+export type EntityQueryResult<R extends readonly ComponentDefinition[]> = ReadonlyArray<
+  [EntityId, Prettify<ComputeQuery<R>>]
+>
 
-export class ECS<ComponentDefs extends readonly ComponentDefinition<any, any>[]> {
+export type EntityQueryResultWithOptionals<
+  R extends readonly ComponentDefinition[],
+  O extends readonly ComponentDefinition[],
+> = ReadonlyArray<[EntityId, Prettify<ComputeQuery<R> & OptionalComputeQuery<O>>]>
+
+export class ECS<ComponentDefinitions extends readonly ComponentDefinition[]> {
   private componentStores = new Map<string, Map<EntityId, any>>()
   private componentIndices = new Map<string, bigint>()
   private entityBitmasks = new Map<EntityId, bigint>()
   private nextComponentIndex = 0n
   private nextEntityId: EntityId = 0n
 
-  private allowedComponents = new Map<string, CompDef>()
-
-  static create<ComponentDefs extends readonly ComponentDefinition<any, any>[]>(
-    ...allowedComponents: ComponentDefs
-  ): ECS<ComponentDefs> {
+  static create<ComponentDefs extends readonly ComponentDefinition[]>(...allowed: ComponentDefs): ECS<ComponentDefs> {
     const ecs = new ECS<ComponentDefs>()
-    for (const componentDef of allowedComponents) {
-      ecs.registerComponentType(componentDef)
-    }
+    for (const def of allowed) ecs.registerComponentType(def)
     return ecs
   }
 
-  createEntity(...components: ComponentInstance<ComponentDefs[number]>[]): EntityId {
-    const entity = this.nextEntityId++
-    this.entityBitmasks.set(entity, 0n)
-    for (const component of components) {
-      this.addComponent(entity, component)
-    }
-    return entity
+  createEntity(...components: ComponentInstance<ComponentDefinitions[number]>[]): EntityId {
+    const e = this.nextEntityId++
+    this.entityBitmasks.set(e, 0n)
+    for (const comp of components) this.addComponent(e, comp)
+    return e
   }
 
-  deleteEntity(entity: EntityId): void {
-    for (const store of this.componentStores.values()) {
-      store.delete(entity)
-    }
-    this.entityBitmasks.delete(entity)
-  }
-
-  addComponent(entity: EntityId, component: ComponentInstance<ComponentDefs[number]>): void {
+  addComponent(e: EntityId, component: ComponentInstance<ComponentDefinitions[number]>): void {
     const tag = component[COMPONENT_TOKEN] as string
-    const index = this.getComponentIndex(tag)
-
-    if (!this.componentStores.has(tag)) {
-      this.componentStores.set(tag, new Map<EntityId, typeof component>())
-    }
-    this.componentStores.get(tag)!.set(entity, component)
-
-    const currentBitmask = this.entityBitmasks.get(entity) || 0n
-    this.entityBitmasks.set(entity, currentBitmask | (1n << index))
+    const idx = this.getComponentIndex(tag)
+    if (!this.componentStores.has(tag)) this.componentStores.set(tag, new Map())
+    this.componentStores.get(tag)!.set(e, component)
+    const mask = this.entityBitmasks.get(e) ?? 0n
+    this.entityBitmasks.set(e, mask | (1n << idx))
   }
 
-  removeComponent(entity: EntityId, component: ComponentDefs[number]): void {
-    const index = this.getComponentIndex(component.type)
-    this.componentStores.get(component.type)?.delete(entity)
-
-    const currentBitmask = this.entityBitmasks.get(entity) || 0n
-    this.entityBitmasks.set(entity, currentBitmask & ~(1n << index))
+  deleteEntity(e: EntityId): void {
+    for (const store of this.componentStores.values()) store.delete(e)
+    this.entityBitmasks.delete(e)
   }
 
-  getComponent<C extends CompDef>(entity: EntityId, component: C): ComponentInstance<C> | undefined {
-    return this.componentStores.get(component.type)?.get(entity) as ComponentInstance<C> | undefined
+  removeComponent(e: EntityId, def: ComponentDefinitions[number]): void {
+    const tag = def.type
+    const idx = this.getComponentIndex(tag)
+    this.componentStores.get(tag)?.delete(e)
+    const mask = this.entityBitmasks.get(e) ?? 0n
+    this.entityBitmasks.set(e, mask & ~(1n << idx))
   }
 
-  hasComponent(entity: EntityId, component: ComponentDefs[number]): boolean {
-    return this.componentStores.get(component.type)?.has(entity) || false
+  getComponent<C extends ComponentDefinition>(e: EntityId, def: C): ComponentInstance<C> | undefined {
+    return this.componentStores.get(def.type)?.get(e) as ComponentInstance<C> | undefined
   }
 
-  // Overload 1: only required
-  queryEntities<R extends readonly ComponentDefs[number][]>(...required: R): EntityQueryResult<R>
+  hasComponent(e: EntityId, def: ComponentDefinitions[number]): boolean {
+    return this.componentStores.get(def.type)?.has(e) ?? false
+  }
 
-  // Overload 2: required + optional
-  queryEntities<R extends readonly ComponentDefs[number][], O extends readonly ComponentDefs[number][]>(
-    required: [...R],
-    optional: [...O],
-  ): EntityQueryResult<R & O>
+  queryEntities<Req extends readonly ComponentDefinitions[number][]>(...required: Req): EntityQueryResult<Req>
+  queryEntities<
+    Req extends readonly ComponentDefinitions[number][],
+    Opt extends readonly ComponentDefinitions[number][],
+  >(required: readonly [...Req], optional: readonly [...Opt]): EntityQueryResultWithOptionals<Req, Opt>
+  queryEntities(
+    first: ComponentDefinitions[number] | readonly ComponentDefinitions[number][],
+    second?: readonly ComponentDefinitions[number][],
+  ): any {
+    let reqDefs: ComponentDefinition[]
+    let optDefs: ComponentDefinition[] = []
 
-  // Implementation
-  queryEntities(reqOrFirst: unknown, optOrSecond?: unknown): any {
-    let required: CompDef[]
-    let optional: CompDef[]
-
-    if (Array.isArray(reqOrFirst)) {
-      // Called with arrays: queryEntities(requiredArray, optionalArray?)
-      required = reqOrFirst as CompDef[]
-      optional = Array.isArray(optOrSecond) ? (optOrSecond as CompDef[]) : []
+    if (Array.isArray(first)) {
+      reqDefs = first as ComponentDefinition[]
+      if (Array.isArray(second)) optDefs = second as ComponentDefinition[]
     } else {
-      // Called with rest args: queryEntities(def1, def2, ...)
-      required = Array.from(arguments) as CompDef[]
-      optional = []
+      // biome-ignore lint/style/noArguments:
+      reqDefs = Array.from(arguments) as ComponentDefinition[]
     }
 
-    // Filter mask: entity must have all required components
-    const requiredMask = required.reduce((mask, def) => mask | (1n << this.getComponentIndex(def.type)), 0n)
+    const reqMask = reqDefs.reduce((m, d) => m | (1n << this.getComponentIndex(d.type)), 0n)
 
-    const result: [EntityId, any][] = []
-    for (const [entity, bitmask] of this.entityBitmasks.entries()) {
-      if ((bitmask & requiredMask) !== requiredMask) continue
+    const out: [EntityId, any][] = []
+    for (const [e, bm] of this.entityBitmasks.entries()) {
+      if ((bm & reqMask) !== reqMask) continue
       const record: any = {}
-
-      // Populate required
-      for (const def of required) {
-        const comp = this.getComponent(entity, def)!
-        record[pascalCaseToCamelCase(def.type)] = comp
+      for (const def of reqDefs) {
+        record[pascalCaseToCamelCase(def.type)] = this.getComponent(e, def)!
       }
-
-      // Populate optional
-      for (const def of optional) {
-        const comp = this.getComponent(entity, def)
-        record[pascalCaseToCamelCase(def.type)] = comp
+      for (const def of optDefs) {
+        record[pascalCaseToCamelCase(def.type)] = this.getComponent(e, def)
       }
-
-      result.push([entity, record])
+      out.push([e, record])
     }
 
-    return result as any
+    return out
   }
 
-  private registerComponentType(componentDef: CompDef): void {
-    if (!this.componentIndices.has(componentDef.type)) {
-      this.componentIndices.set(componentDef.type, this.nextComponentIndex++)
-      this.allowedComponents.set(componentDef.type, componentDef)
+  private registerComponentType(def: ComponentDefinitions[number]): void {
+    if (!this.componentIndices.has(def.type)) {
+      this.componentIndices.set(def.type, this.nextComponentIndex++)
     }
   }
 
-  private getComponentIndex(type: string): bigint {
-    const idx = this.componentIndices.get(type)
-    if (idx === undefined) {
-      throw new Error(`Component type ${type} is not registered.`)
-    }
+  private getComponentIndex(tag: string): bigint {
+    const idx = this.componentIndices.get(tag)
+    if (idx === undefined) throw new Error(`Component ${tag} not registered.`)
     return idx
   }
 }
 
 export function defineComponent<T>(): <N extends string>(name: N) => ComponentDefinition<T, N> {
-  return (name) => ({
-    type: name,
-    create: (data) => ({
-      ...data,
-      [COMPONENT_TOKEN]: name,
-    }),
-  })
+  return (name) => ({ type: name, create: (data) => ({ ...data, [COMPONENT_TOKEN]: name }) })
 }

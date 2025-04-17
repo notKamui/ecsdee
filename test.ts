@@ -6,30 +6,25 @@ const Health = defineComponent<{ value: number }>()('Health')
 
 const ecs = ECS.create(Position, Velocity, Health)
 
-const a = ecs.createEntity(
-  Position.create({ x: 10, y: 20 }),
-  Velocity.create({ dx: 1, dy: 2 }),
-  Health.create({ value: 100 }),
-)
-const b = ecs.createEntity(Position.create({ x: 30, y: 40 }), Health.create({ value: 200 }))
-const c = ecs.createEntity(
-  Position.create({ x: 50, y: 60 }),
-  Velocity.create({ dx: 5, dy: 6 }),
-  Health.create({ value: 300 }),
-)
+ecs.createEntity(Position.create({ x: 10, y: 20 }), Velocity.create({ dx: 1, dy: 2 }), Health.create({ value: 100 }))
+ecs.createEntity(Position.create({ x: 30, y: 40 }), Health.create({ value: 200 }))
+ecs.createEntity(Position.create({ x: 50, y: 60 }), Velocity.create({ dx: 5, dy: 6 }), Health.create({ value: 300 }))
 
-const query = ecs.queryEntities([Position, Health], [Velocity])
+const query = ecs.queryEntities(Position, Velocity, Health)
 for (const [id, components] of query) {
+  const { position, health, velocity } = components
+  console.log(id, position, health, velocity, '\n')
+}
+
+console.log('\n\n')
+
+const queryWithOptionals = ecs.queryEntities([Position, Health], [Velocity])
+for (const [id, components] of queryWithOptionals) {
   const { position, health, velocity } = components
   console.log(`Entity ${id} has Position(${position.x}, ${position.y}) and Health(${health.value})`)
   if (velocity) {
-    console.log(`Entity velocity ${velocity.dx} ${velocity.dy}`)
+    console.log(`Entity velocity ${velocity.dx} ${velocity.dy}\n`)
   } else {
-    console.log('No velocity')
+    console.log('No velocity\n')
   }
 }
-
-const aPosition = ecs.getComponent(a, Position)
-const aVelocity = ecs.getComponent(a, Velocity)
-const aHealth = ecs.getComponent(a, Health)
-console.log(aPosition, aVelocity, aHealth)
