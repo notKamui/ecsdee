@@ -48,7 +48,7 @@ export class ECS<ComponentDefinitions extends readonly ComponentDefinition[]> {
   createEntity(...components: ComponentInstance<ComponentDefinitions[number]>[]): EntityId {
     const e = this.nextEntityId++
     this.entityBitmasks.set(e, 0n)
-    for (const comp of components) this.addComponent(e, comp)
+    components.forEach((component) => this.addComponent(e, component))
     return e
   }
 
@@ -62,7 +62,7 @@ export class ECS<ComponentDefinitions extends readonly ComponentDefinition[]> {
   }
 
   deleteEntity(e: EntityId): void {
-    for (const store of this.componentStores.values()) store.delete(e)
+    this.componentStores.values().forEach((store) => store.delete(e))
     this.entityBitmasks.delete(e)
   }
 
@@ -95,11 +95,11 @@ export class ECS<ComponentDefinitions extends readonly ComponentDefinition[]> {
     let optDefs: ComponentDefinition[] = []
 
     if (Array.isArray(first)) {
-      reqDefs = first as ComponentDefinition[]
-      if (Array.isArray(second)) optDefs = second as ComponentDefinition[]
+      reqDefs = first
+      if (Array.isArray(second)) optDefs = second
     } else {
       // biome-ignore lint/style/noArguments:
-      reqDefs = Array.from(arguments) as ComponentDefinition[]
+      reqDefs = Array.from(arguments)
     }
 
     const reqMask = reqDefs.reduce((m, d) => m | (1n << this.getComponentIndex(d.type)), 0n)
